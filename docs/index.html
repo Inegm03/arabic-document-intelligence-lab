@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <style>.pdf-controls{display:flex;align-items:center;justify-content:space-between;margin-top:12px}.pdf-controls[hidden]{display:none}.pdf-controls span{font-size:10px;color:#66736e}.pdf-controls button:disabled{cursor:not-allowed;opacity:.4}</style>
+  <style>.pdf-controls{display:flex;align-items:center;justify-content:space-between;margin-top:12px}.pdf-controls[hidden]{display:none}.pdf-controls span{font-size:10px;color:#66736e}.pdf-controls button:disabled{cursor:not-allowed;opacity:.4}.ocr-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.ocr-actions button:disabled{cursor:not-allowed;opacity:.45}.ocr-output{width:100%;min-height:125px;resize:vertical;border:1px solid var(--line);background:#fffdf8;color:var(--ink);padding:12px;font:18px/1.8 "IBM Plex Sans Arabic",sans-serif}.ocr-confidence{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;color:#66736e}.ocr-confidence progress{width:58%;accent-color:var(--green)}</style>
 </head>
 <body>
   <header class="nav shell">
@@ -66,7 +66,12 @@
           </div>
           <div class="extraction">
             <div class="tabs"><button class="active" data-tab="text">Extracted text</button><button data-tab="metadata">Metadata</button></div>
-            <div id="textTab" class="tab-content active"><p id="ocrText" lang="ar" dir="rtl">حمّل مستنداً أو استخدم العينة لبدء التحليل.</p><div class="notice">This GitHub Pages prototype demonstrates the product flow. Production OCR connects through the repository's FastAPI service.</div></div>
+            <div id="textTab" class="tab-content active">
+              <textarea id="ocrText" class="ocr-output" lang="ar" dir="rtl" aria-label="Extracted Arabic text">حمّل مستنداً أو استخدم العينة لبدء التحليل.</textarea>
+              <div class="ocr-confidence"><span id="ocrProgress">OCR ready</span><progress id="ocrProgressBar" max="100" value="0"></progress><b id="ocrConfidence">—</b></div>
+              <div class="ocr-actions"><button id="runOcrButton" class="ghost-button" type="button" disabled>Extract Arabic text</button><button id="downloadTextButton" class="ghost-button" type="button" disabled>Download TXT</button><button id="downloadJsonButton" class="ghost-button" type="button" disabled>Download JSON</button></div>
+              <div class="notice">Arabic OCR runs locally in your browser. Review extracted text against the source page before using it.</div>
+            </div>
             <div id="metadataTab" class="tab-content metadata"><p><span>Language</span><b>Arabic</b></p><p><span>Document type</span><b id="docType">Not analysed</b></p><p><span>Processing</span><b>Private, in browser</b></p><p><span>Export format</span><b>JSON · TXT · PDF</b></p></div>
           </div>
         </div>
@@ -86,6 +91,7 @@
     <section class="cta"><div class="shell"><p class="eyebrow">A venture-studio proof of capability</p><h2>Arabic cultural knowledge deserves technology built for its complexity.</h2><a class="button light" href="https://github.com/Inegm03/arabic-document-intelligence-lab">View the research repository ↗</a></div></section>
   </main>
   <footer class="shell"><div class="brand"><span class="brand-mark">ت</span><span>Turath AI</span></div><p>Prototype by Ismail Ibrahim · AI & Computer Vision Venture Builder</p><p>Responsible Arabic AI · 2026</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="app.js" type="module"></script>
 </body>
 </html>

@@ -10,6 +10,12 @@ const pdfControls = document.querySelector('#pdfControls');
 const pageIndicator = document.querySelector('#pageIndicator');
 const previousPage = document.querySelector('#previousPage');
 const nextPage = document.querySelector('#nextPage');
+const runOcrButton = document.querySelector('#runOcrButton');
+const downloadTextButton = document.querySelector('#downloadTextButton');
+const downloadJsonButton = document.querySelector('#downloadJsonButton');
+const ocrProgress = document.querySelector('#ocrProgress');
+const ocrProgressBar = document.querySelector('#ocrProgressBar');
+const ocrConfidence = document.querySelector('#ocrConfidence');
 const els = {
   score: document.querySelector('#score'), ring: document.querySelector('#scoreRing'),
   brightness: document.querySelector('#brightness'), contrast: document.querySelector('#contrast'),
@@ -19,6 +25,17 @@ const els = {
 let pdfDocument = null;
 let currentPage = 1;
 let renderToken = 0;
+let ocrWorker = null;
+let currentFilename = 'arabic-document';
+let lastOcrResult = null;
+
+function setOutput(text) { els.text.value = text; }
+
+function resetOcrResult() {
+  lastOcrResult = null;
+  ocrProgress.textContent = 'OCR ready'; ocrProgressBar.value = 0; ocrConfidence.textContent = '—';
+  downloadTextButton.disabled = true; downloadJsonButton.disabled = true;
+}
 
 function setMetric(name, value) {
   els[name].textContent = `${Math.round(value)}%`;
@@ -49,12 +66,14 @@ function analyse() {
   els.score.textContent = score;
   els.ring.style.strokeDasharray = `${score} 100`;
   els.status.textContent = score > 74 ? 'Good quality' : score > 50 ? 'Review advised' : 'Poor quality';
-  els.text.textContent = 'تم تحليل جودة الصفحة بنجاح. خدمة التعرّف الضوئي الكاملة متاحة عبر واجهة المشروع البرمجية.';
+  setOutput('تم تحليل جودة الصفحة بنجاح. اضغط «استخراج النص العربي» لتشغيل التعرّف الضوئي محلياً.');
 }
 
 function showPreview() {
   preview.style.display = 'block';
   prompt.style.display = 'none';
+  runOcrButton.disabled = false;
+  resetOcrResult();
 }
 
 function updatePdfControls() {
@@ -107,6 +126,7 @@ async function loadPdf(file) {
 function loadFile(file) {
   if (!file) return;
   if (file.size > 20 * 1024 * 1024) { alert('Please choose a document smaller than 20 MB.'); return; }
+  currentFilename = file.name.replace(/\.[^.]+$/, '') || 'arabic-document';
   if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) { loadPdf(file); return; }
   if (!file.type.startsWith('image/')) { alert('Please choose a PDF, JPG, PNG, or WebP file.'); return; }
   pdfDocument = null; updatePdfControls();
@@ -114,6 +134,55 @@ function loadFile(file) {
   img.onload = () => { drawImage(img); URL.revokeObjectURL(img.src); };
   img.onerror = () => { URL.revokeObjectURL(img.src); alert('This image could not be opened.'); };
   img.src = URL.createObjectURL(file);
+}
+
+async function getOcrWorker() {
+  if (ocrWorker) return ocrWorker;
+  ocrWorker = await Tesseract.createWorker('ara', 1, {
+    logger(message) {
+      const progress = Math.round((message.progress || 0) * 100);
+      ocrProgress.textContent = message.status ? message.status.replace(/_/g, ' ') : 'Preparing OCR';
+      ocrProgressBar.value = progress;
+    }
+  });
+  return ocrWorker;
+}
+
+async function runOcr() {
+  runOcrButton.disabled = true;
+  ocrProgress.textContent = 'Loading Arabic OCR…'; ocrProgressBar.value = 0; ocrConfidence.textContent = '—';
+  try {
+    const worker = await getOcrWorker();
+    const result = await worker.recognize(preview);
+    const text = result.data.text.trim();
+    const confidence = Math.round(result.data.confidence || 0);
+    lastOcrResult = {
+      filename: currentFilename,
+      page: pdfDocument ? currentPage : 1,
+      pageCount: pdfDocument ? pdfDocument.numPages : 1,
+      language: 'ara', confidence, text,
+      qualityScore: Number(els.score.textContent) || null,
+      createdAt: new Date().toISOString()
+    };
+    setOutput(text || 'لم يتم العثور على نص عربي واضح في هذه الصفحة.');
+    ocrProgress.textContent = text ? 'Extraction complete' : 'No clear text found';
+    ocrProgressBar.value = 100; ocrConfidence.textContent = `${confidence}%`;
+    downloadTextButton.disabled = !text; downloadJsonButton.disabled = !text;
+  } catch (error) {
+    console.error(error);
+    ocrProgress.textContent = 'OCR failed'; ocrProgressBar.value = 0;
+    setOutput('تعذّر استخراج النص. تحقق من الاتصال وحاول مرة أخرى بصورة أوضح.');
+  } finally {
+    runOcrButton.disabled = false;
+  }
+}
+
+function download(content, extension, type) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([content], { type }));
+  link.download = `${currentFilename}-page-${pdfDocument ? currentPage : 1}.${extension}`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 fileInput.addEventListener('change', event => loadFile(event.target.files[0]));
@@ -132,16 +201,21 @@ document.querySelector('#sampleButton').addEventListener('click', () => {
   ctx.strokeStyle = 'rgba(92,62,25,.12)';
   for (let i = 0; i < 11; i++) { ctx.beginPath(); ctx.moveTo(80, 220 + i * 58); ctx.lineTo(640, 220 + i * 58); ctx.stroke(); }
   showPreview(); els.status.textContent = 'Analysing…';
-  setTimeout(() => { analyse(); els.text.textContent = 'العلم نور يضيء طريق المستقبل. نحفظ تراثنا العربي ونمنحه حياة جديدة من خلال أدوات رقمية مسؤولة ودقيقة.'; els.type.textContent = 'Heritage manuscript sample'; }, 250);
+  currentFilename = 'turath-heritage-sample';
+  setTimeout(() => { analyse(); setOutput('العلم نور يضيء طريق المستقبل. نحفظ تراثنا العربي ونمنحه حياة جديدة من خلال أدوات رقمية مسؤولة ودقيقة.'); els.type.textContent = 'Heritage manuscript sample'; }, 250);
 });
 
+runOcrButton.addEventListener('click', runOcr);
+downloadTextButton.addEventListener('click', () => { if (lastOcrResult) download(els.text.value, 'txt', 'text/plain;charset=utf-8'); });
+downloadJsonButton.addEventListener('click', () => { if (lastOcrResult) download(JSON.stringify({ ...lastOcrResult, text: els.text.value }, null, 2), 'json', 'application/json'); });
 previousPage.addEventListener('click', () => { if (pdfDocument && currentPage > 1) renderPdfPage(currentPage - 1); });
 nextPage.addEventListener('click', () => { if (pdfDocument && currentPage < pdfDocument.numPages) renderPdfPage(currentPage + 1); });
 document.querySelector('#clearButton').addEventListener('click', () => {
   renderToken++; pdfDocument = null; currentPage = 1; updatePdfControls(); preview.style.display = 'none'; prompt.style.display = 'flex'; fileInput.value = '';
   els.score.textContent = '—'; els.ring.style.strokeDasharray = '0 100';
   ['brightness', 'contrast', 'sharpness'].forEach(name => { els[name].textContent = '—'; document.querySelector(`#${name}Bar`).style.width = '0'; });
-  els.status.textContent = 'Ready'; els.text.textContent = 'حمّل مستنداً أو استخدم العينة لبدء التحليل.'; els.type.textContent = 'Not analysed';
+  runOcrButton.disabled = true; resetOcrResult();
+  els.status.textContent = 'Ready'; setOutput('حمّل مستنداً أو استخدم العينة لبدء التحليل.'); els.type.textContent = 'Not analysed';
 });
 
 document.querySelectorAll('.tabs button').forEach(button => button.addEventListener('click', () => {
