@@ -1,5 +1,6 @@
 import pytest
 from PIL import Image
+
 from arabic_doc_lab.corruptions import corrupt
 
 

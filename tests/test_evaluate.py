@@ -1,4 +1,5 @@
 from PIL import Image
+
 from arabic_doc_lab.evaluate import evaluate_one
 
 

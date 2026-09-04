@@ -1,6 +1,7 @@
 """OCR engine boundary, kept replaceable for fair comparisons."""
 
 from typing import Protocol
+
 from PIL import Image
 
 

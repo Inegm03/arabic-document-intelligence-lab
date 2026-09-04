@@ -2,7 +2,9 @@
 
 from dataclasses import asdict, dataclass
 from time import perf_counter
+
 from PIL import Image
+
 from .metrics import character_error_rate, word_error_rate
 
 
