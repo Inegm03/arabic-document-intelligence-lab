@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <style>.pdf-controls{display:flex;align-items:center;justify-content:space-between;margin-top:12px}.pdf-controls[hidden]{display:none}.pdf-controls span{font-size:10px;color:#66736e}.pdf-controls button:disabled{cursor:not-allowed;opacity:.4}</style>
 </head>
 <body>
   <header class="nav shell">
@@ -43,15 +44,16 @@
     </section>
 
     <section class="lab shell" id="lab">
-      <div class="section-heading"><div><p class="eyebrow">Interactive prototype</p><h2>Arabic Document Lab</h2></div><p>Upload an image or use our safe sample. Processing in this public demo happens entirely in your browser.</p></div>
+      <div class="section-heading"><div><p class="eyebrow">Interactive prototype</p><h2>Arabic Document Lab</h2></div><p>Upload an image or PDF, or use our safe sample. Processing in this public demo happens entirely in your browser.</p></div>
       <div class="workspace">
         <div class="upload-panel">
           <div class="panel-top"><span>01 · Source</span><span class="privacy">● Local processing</span></div>
           <label class="dropzone" id="dropzone" for="fileInput">
-            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp">
+            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf">
             <canvas id="preview" width="720" height="900" aria-label="Document preview"></canvas>
-            <span class="upload-prompt" id="uploadPrompt"><b>Drop an Arabic document here</b><small>JPG, PNG or WebP · maximum 10 MB</small><i>Choose file</i></span>
+            <span class="upload-prompt" id="uploadPrompt"><b>Drop an Arabic document here</b><small>PDF, JPG, PNG or WebP · maximum 20 MB</small><i>Choose file</i></span>
           </label>
+          <div class="pdf-controls" id="pdfControls" hidden><button id="previousPage" class="ghost-button" type="button">← Previous</button><span id="pageIndicator">Page 1 of 1</span><button id="nextPage" class="ghost-button" type="button">Next →</button></div>
           <div class="sample-row"><button id="sampleButton" class="ghost-button">Use heritage sample</button><button id="clearButton" class="ghost-button">Reset</button></div>
         </div>
         <div class="results-panel">
@@ -84,6 +86,6 @@
     <section class="cta"><div class="shell"><p class="eyebrow">A venture-studio proof of capability</p><h2>Arabic cultural knowledge deserves technology built for its complexity.</h2><a class="button light" href="https://github.com/Inegm03/arabic-document-intelligence-lab">View the research repository ↗</a></div></section>
   </main>
   <footer class="shell"><div class="brand"><span class="brand-mark">ت</span><span>Turath AI</span></div><p>Prototype by Ismail Ibrahim · AI & Computer Vision Venture Builder</p><p>Responsible Arabic AI · 2026</p></footer>
-  <script src="app.js"></script>
+  <script src="app.js" type="module"></script>
 </body>
 </html>
