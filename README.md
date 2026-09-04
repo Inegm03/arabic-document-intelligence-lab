@@ -2,6 +2,8 @@
 
 A reproducible computer-vision benchmark for measuring how Arabic OCR systems fail under realistic phone-capture conditions—not just their accuracy on clean scans.
 
+**Live product prototype:** [Arabic Heritage Document Intelligence](https://inegm03.github.io/arabic-document-intelligence-lab/)
+
 ## Why this project matters
 
 Arabic document AI is often evaluated with one aggregate score. That hides deployment failures caused by blur, darkness, low contrast, and JPEG compression. This lab provides Arabic-aware CER/WER metrics, deterministic corruption levels, latency measurement, a replaceable OCR-engine interface, and a FastAPI demo.
@@ -51,4 +53,3 @@ The repository intentionally excludes copyrighted or personally identifying docu
 ## Responsible use
 
 OCR output can expose sensitive personal data and should not be logged by default. Benchmark data must be lawfully obtained, documented, and scrubbed of private information.
-

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="An interactive prototype for digitising, evaluating, and searching Arabic heritage documents.">
+  <title>Turath AI — Arabic Heritage Document Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="nav shell">
+    <a class="brand" href="#top" aria-label="Turath AI home"><span class="brand-mark">ت</span><span>Turath <b>AI</b></span></a>
+    <nav aria-label="Main navigation"><a href="#studio">Studio</a><a href="#lab">Live Lab</a><a href="#impact">Impact</a></nav>
+    <a class="button button-small" href="#lab">Open the lab</a>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow">Arabic knowledge · responsibly intelligent</p>
+        <h1>Preserving the past.<br><em>Making it searchable.</em></h1>
+        <p class="lede">A working venture prototype that transforms difficult Arabic scans into measurable, searchable, structured knowledge.</p>
+        <div class="hero-actions"><a class="button" href="#lab">Try the document lab</a><a class="text-link" href="#studio">Explore the venture <span>↗</span></a></div>
+        <div class="proof"><span><strong>4</strong> degradation tests</span><span><strong>Arabic</strong> aware evaluation</span><span><strong>API</strong> ready architecture</span></div>
+      </div>
+      <div class="hero-art" aria-label="Arabic manuscript digitisation illustration">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <article class="manuscript-card">
+          <span class="folio">ورقة ١٢</span>
+          <h2 lang="ar" dir="rtl">العلم نورٌ يضيء طريق المستقبل</h2>
+          <p lang="ar" dir="rtl">نحفظ تراثنا، ونمنحه حياة جديدة من خلال أدوات رقمية مسؤولة ودقيقة.</p>
+          <div class="scan-line"></div>
+        </article>
+        <div class="confidence"><span>OCR confidence</span><strong>94.8%</strong><i><b></b></i></div>
+      </div>
+    </section>
+
+    <section class="statement" id="studio">
+      <div class="shell statement-grid"><p class="eyebrow">The flagship venture</p><h2>From fragile pages to a living Arabic knowledge ecosystem.</h2><p>Built for libraries, museums, researchers, schools, and cultural institutions—combining document quality analysis, Arabic OCR, structured metadata, and retrieval.</p></div>
+    </section>
+
+    <section class="lab shell" id="lab">
+      <div class="section-heading"><div><p class="eyebrow">Interactive prototype</p><h2>Arabic Document Lab</h2></div><p>Upload an image or use our safe sample. Processing in this public demo happens entirely in your browser.</p></div>
+      <div class="workspace">
+        <div class="upload-panel">
+          <div class="panel-top"><span>01 · Source</span><span class="privacy">● Local processing</span></div>
+          <label class="dropzone" id="dropzone" for="fileInput">
+            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp">
+            <canvas id="preview" width="720" height="900" aria-label="Document preview"></canvas>
+            <span class="upload-prompt" id="uploadPrompt"><b>Drop an Arabic document here</b><small>JPG, PNG or WebP · maximum 10 MB</small><i>Choose file</i></span>
+          </label>
+          <div class="sample-row"><button id="sampleButton" class="ghost-button">Use heritage sample</button><button id="clearButton" class="ghost-button">Reset</button></div>
+        </div>
+        <div class="results-panel">
+          <div class="panel-top"><span>02 · Analysis</span><span id="status" class="status">Ready</span></div>
+          <div class="quality-score"><div><span>Document quality</span><strong id="score">—</strong></div><svg viewBox="0 0 42 42"><circle cx="21" cy="21" r="15.9"></circle><circle id="scoreRing" class="ring" cx="21" cy="21" r="15.9"></circle></svg></div>
+          <div class="metrics">
+            <div><span>Brightness</span><b id="brightness">—</b><i><em id="brightnessBar"></em></i></div>
+            <div><span>Contrast</span><b id="contrast">—</b><i><em id="contrastBar"></em></i></div>
+            <div><span>Sharpness</span><b id="sharpness">—</b><i><em id="sharpnessBar"></em></i></div>
+          </div>
+          <div class="extraction">
+            <div class="tabs"><button class="active" data-tab="text">Extracted text</button><button data-tab="metadata">Metadata</button></div>
+            <div id="textTab" class="tab-content active"><p id="ocrText" lang="ar" dir="rtl">حمّل مستنداً أو استخدم العينة لبدء التحليل.</p><div class="notice">This GitHub Pages prototype demonstrates the product flow. Production OCR connects through the repository's FastAPI service.</div></div>
+            <div id="metadataTab" class="tab-content metadata"><p><span>Language</span><b>Arabic</b></p><p><span>Document type</span><b id="docType">Not analysed</b></p><p><span>Processing</span><b>Private, in browser</b></p><p><span>Export format</span><b>JSON · TXT · PDF</b></p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features shell" id="impact">
+      <div class="section-heading"><div><p class="eyebrow">Designed for real collections</p><h2>One pipeline, four capabilities</h2></div></div>
+      <div class="feature-grid">
+        <article><span>01</span><h3>Assess</h3><p>Detect blur, darkness, weak contrast, and compression before OCR begins.</p></article>
+        <article><span>02</span><h3>Extract</h3><p>Use replaceable Arabic OCR engines with transparent confidence and failure reporting.</p></article>
+        <article><span>03</span><h3>Enrich</h3><p>Normalize text and attach useful topics, dates, authors, and collection metadata.</p></article>
+        <article><span>04</span><h3>Discover</h3><p>Search across digitised collections while keeping the original page beside the text.</p></article>
+      </div>
+    </section>
+
+    <section class="cta"><div class="shell"><p class="eyebrow">A venture-studio proof of capability</p><h2>Arabic cultural knowledge deserves technology built for its complexity.</h2><a class="button light" href="https://github.com/Inegm03/arabic-document-intelligence-lab">View the research repository ↗</a></div></section>
+  </main>
+  <footer class="shell"><div class="brand"><span class="brand-mark">ت</span><span>Turath AI</span></div><p>Prototype by Ismail Ibrahim · AI & Computer Vision Venture Builder</p><p>Responsible Arabic AI · 2026</p></footer>
+  <script src="app.js"></script>
+</body>
+</html>
