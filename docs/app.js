@@ -85,7 +85,9 @@ function updatePdfControls() {
 }
 
 function drawImage(img) {
-  const scale = Math.min(720 / img.width, 900 / img.height);
+  // Keep the source sufficiently large for Arabic dots/diacritics.  The CSS
+  // constrains the *display* size; this canvas is also the OCR source.
+  const scale = Math.min(1, 2400 / Math.max(img.width, img.height));
   preview.width = Math.round(img.width * scale);
   preview.height = Math.round(img.height * scale);
   ctx.drawImage(img, 0, 0, preview.width, preview.height);
@@ -100,7 +102,7 @@ async function renderPdfPage(pageNumber) {
   const page = await pdfDocument.getPage(pageNumber);
   if (token !== renderToken) return;
   const base = page.getViewport({ scale: 1 });
-  const viewport = page.getViewport({ scale: Math.min(720 / base.width, 900 / base.height, 2) });
+  const viewport = page.getViewport({ scale: Math.min(2400 / Math.max(base.width, base.height), 3) });
   preview.width = Math.round(viewport.width);
   preview.height = Math.round(viewport.height);
   await page.render({ canvasContext: ctx, viewport }).promise;
@@ -148,12 +150,52 @@ async function getOcrWorker() {
   return ocrWorker;
 }
 
+function makeOcrCanvas() {
+  // OCR needs a clean, enlarged copy, while the preview must retain its
+  // original colours.  Avoid hard thresholding: it commonly removes Arabic
+  // dots and makes coloured identity cards worse.
+  const longestSide = Math.max(preview.width, preview.height);
+  const scale = Math.min(2, 2800 / longestSide);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(preview.width * scale);
+  canvas.height = Math.round(preview.height * scale);
+  const ocrCtx = canvas.getContext('2d', { willReadFrequently: true });
+  ocrCtx.imageSmoothingEnabled = true;
+  ocrCtx.imageSmoothingQuality = 'high';
+  ocrCtx.filter = 'grayscale(1) contrast(1.65) brightness(1.08)';
+  ocrCtx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+  ocrCtx.filter = 'none';
+  return canvas;
+}
+
+function candidateScore(result) {
+  const words = result.data.words || [];
+  const wordConfidence = words.length
+    ? words.reduce((total, word) => total + (word.confidence || 0), 0) / words.length
+    : result.data.confidence || 0;
+  // A tiny length component breaks ties in favour of a complete layout pass,
+  // without allowing random noise to win over confidence.
+  return wordConfidence + Math.min(8, (result.data.text || '').trim().length / 45);
+}
+
 async function runOcr() {
   runOcrButton.disabled = true;
   ocrProgress.textContent = 'Loading Arabic OCR…'; ocrProgressBar.value = 0; ocrConfidence.textContent = '—';
   try {
     const worker = await getOcrWorker();
-    const result = await worker.recognize(preview);
+    const ocrCanvas = makeOcrCanvas();
+    ocrProgress.textContent = 'Enhancing image for Arabic text…';
+    ocrProgressBar.value = 18;
+
+    // Sparse text mode is substantially better for IDs, certificates and
+    // mixed image/text cards than Tesseract's default newspaper-page layout.
+    await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
+    const sparseResult = await worker.recognize(ocrCanvas);
+    ocrProgress.textContent = 'Checking Arabic text layout…';
+    ocrProgressBar.value = 78;
+    await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    const blockResult = await worker.recognize(ocrCanvas);
+    const result = candidateScore(sparseResult) >= candidateScore(blockResult) ? sparseResult : blockResult;
     const text = result.data.text.trim();
     const confidence = Math.round(result.data.confidence || 0);
     lastOcrResult = {
