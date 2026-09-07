@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "Replace with the public dataset name",
+  "license": {
+    "name": "Replace with the dataset license",
+    "url": "https://example.org/license"
+  },
+  "source_url": "https://example.org/dataset",
+  "samples": [
+    {
+      "id": "public-page-001",
+      "image": "images/public-page-001.png",
+      "reference": "النص المرجعي الموثق",
+      "domain": "printed-page",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

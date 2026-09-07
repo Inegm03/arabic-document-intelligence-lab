@@ -15,6 +15,9 @@ Arabic document AI is often evaluated with one aggregate score. That hides deplo
 - Five severity levels for blur, darkness, low contrast, and JPEG compression
 - Replaceable OCR engine interface with a Tesseract Arabic baseline
 - Per-sample latency measurement
+- Validated, hash-pinned dataset manifests with license and source provenance
+- Deterministic CLI experiments across clean and corrupted samples
+- Privacy-safe JSON reports that omit recognized text by default
 - REST API with health and OCR endpoints
 - Automated tests and GitHub Actions CI
 
@@ -36,6 +39,29 @@ curl -F "file=@arabic-page.jpg" http://127.0.0.1:8000/ocr
 
 Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
 
+## Reproducible experiments
+
+Copy `examples/manifest.example.json`, then describe each lawfully obtained sample. Every
+manifest must name the dataset license and source URL, use relative image paths, and pin each
+image with its SHA-256 digest. The example contains placeholders and is not a runnable dataset.
+
+```bash
+sha256sum datasets/my-dataset/images/page-001.png
+arabic-doc-lab datasets/my-dataset/manifest.json \
+  --output results/tesseract.json \
+  --max-severity 5
+```
+
+The runner verifies **all** paths and hashes before OCR starts, then evaluates each page once
+clean and once per selected corruption and severity. Reports contain dataset provenance,
+sample IDs, domains, engine names, CER/WER, and latency. OCR predictions are intentionally
+excluded because they may expose document contents; add `--include-predictions` only when the
+output can be stored and shared safely.
+
+Use `--corruptions blur dark` to select conditions. `--dataset-root` overrides the default
+image root (the manifest directory). Reports are written atomically under the ignored
+`results/` directory.
+
 ## Evaluation design
 
 Run each source page at severity 0–5 for every corruption. Report mean CER, WER, and p50/p95 latency by document domain and condition. Keep clean and corrupted variants linked by sample ID so robustness degradation can be distinguished from baseline OCR failure.
@@ -44,7 +70,7 @@ The repository intentionally excludes copyrighted or personally identifying docu
 
 ## Roadmap
 
-- Dataset manifest and CLI experiment runner
+- [x] Dataset manifest and CLI experiment runner
 - Kraken and transformer-based OCR adapters
 - Layout-field F1 for receipts and forms
 - HTML report with failure galleries and severity curves
