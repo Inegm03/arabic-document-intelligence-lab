@@ -150,10 +150,10 @@ async function getOcrWorker() {
   return ocrWorker;
 }
 
-function makeOcrCanvas() {
-  // OCR needs a clean, enlarged copy, while the preview must retain its
-  // original colours.  Avoid hard thresholding: it commonly removes Arabic
-  // dots and makes coloured identity cards worse.
+function makeOcrCanvas({ threshold = false } = {}) {
+  // OCR needs a clean, enlarged copy, while the preview retains its original
+  // colours.  Posters frequently mix dark blue and red Arabic text on a
+  // pale background: Tesseract's automatic binarisation is unreliable there.
   const longestSide = Math.max(preview.width, preview.height);
   const scale = Math.min(2, 2800 / longestSide);
   const canvas = document.createElement('canvas');
@@ -165,6 +165,34 @@ function makeOcrCanvas() {
   ocrCtx.filter = 'grayscale(1) contrast(1.65) brightness(1.08)';
   ocrCtx.drawImage(preview, 0, 0, canvas.width, canvas.height);
   ocrCtx.filter = 'none';
+  if (!threshold) return canvas;
+
+  // A mild adaptive threshold creates a second, high-contrast candidate. It
+  // deliberately uses a conservative cutoff so Arabic dots are not erased.
+  const pixels = ocrCtx.getImageData(0, 0, canvas.width, canvas.height);
+  const histogram = new Uint32Array(256);
+  for (let i = 0; i < pixels.data.length; i += 4) histogram[pixels.data[i]]++;
+  const total = canvas.width * canvas.height;
+  let weightedTotal = 0;
+  for (let value = 0; value < 256; value++) weightedTotal += value * histogram[value];
+  let backgroundWeight = 0, backgroundSum = 0, bestVariance = -1, cutoff = 165;
+  for (let value = 0; value < 256; value++) {
+    backgroundWeight += histogram[value];
+    if (!backgroundWeight) continue;
+    const foregroundWeight = total - backgroundWeight;
+    if (!foregroundWeight) break;
+    backgroundSum += value * histogram[value];
+    const difference = backgroundSum / backgroundWeight - (weightedTotal - backgroundSum) / foregroundWeight;
+    const variance = backgroundWeight * foregroundWeight * difference * difference;
+    if (variance > bestVariance) { bestVariance = variance; cutoff = value; }
+  }
+  // Bias a little towards preserving thin strokes and dots in phone images.
+  cutoff = Math.max(125, Math.min(210, cutoff + 12));
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const value = pixels.data[i] < cutoff ? 0 : 255;
+    pixels.data[i] = value; pixels.data[i + 1] = value; pixels.data[i + 2] = value;
+  }
+  ocrCtx.putImageData(pixels, 0, 0);
   return canvas;
 }
 
@@ -173,9 +201,24 @@ function candidateScore(result) {
   const wordConfidence = words.length
     ? words.reduce((total, word) => total + (word.confidence || 0), 0) / words.length
     : result.data.confidence || 0;
-  // A tiny length component breaks ties in favour of a complete layout pass,
-  // without allowing random noise to win over confidence.
-  return wordConfidence + Math.min(8, (result.data.text || '').trim().length / 45);
+  const text = (result.data.text || '').trim();
+  const letters = text.match(/[\u0621-\u064A]/g) || [];
+  const nonSpace = text.match(/\S/g) || [];
+  const arabicShare = nonSpace.length ? letters.length / nonSpace.length : 0;
+  const lines = text.split(/\n+/).filter(Boolean);
+  const readableLines = lines.filter(line => (line.match(/[\u0621-\u064A]/g) || []).length >= 3).length;
+  // Engine confidence alone often chooses scattered logo fragments. Reward
+  // Arabic-heavy, line-like output, which is what a document extraction needs.
+  return wordConfidence + arabicShare * 24 + readableLines * 2 + Math.min(8, text.length / 70);
+}
+
+async function recognizeCandidate(worker, canvas, mode) {
+  await worker.setParameters({
+    tessedit_pageseg_mode: String(mode),
+    preserve_interword_spaces: '1',
+    user_defined_dpi: '300'
+  });
+  return worker.recognize(canvas);
 }
 
 async function runOcr() {
@@ -184,18 +227,26 @@ async function runOcr() {
   try {
     const worker = await getOcrWorker();
     const ocrCanvas = makeOcrCanvas();
+    const thresholdCanvas = makeOcrCanvas({ threshold: true });
     ocrProgress.textContent = 'Enhancing image for Arabic text…';
     ocrProgressBar.value = 18;
 
-    // Sparse text mode is substantially better for IDs, certificates and
-    // mixed image/text cards than Tesseract's default newspaper-page layout.
-    await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
-    const sparseResult = await worker.recognize(ocrCanvas);
-    ocrProgress.textContent = 'Checking Arabic text layout…';
-    ocrProgressBar.value = 78;
-    await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
-    const blockResult = await worker.recognize(ocrCanvas);
-    const result = candidateScore(sparseResult) >= candidateScore(blockResult) ? sparseResult : blockResult;
+    // Try the two layouts that matter here.  Mode 6 keeps lines in reading
+    // order for posters and notices; mode 11 rescues sparse cards.  We run
+    // both against a normal and an ink-on-paper candidate, then keep the most
+    // Arabic-like coherent result instead of blindly trusting confidence.
+    const candidates = [];
+    for (const [canvas, label] of [[ocrCanvas, 'document'], [thresholdCanvas, 'high contrast']]) {
+      for (const mode of [6, 11]) {
+        ocrProgress.textContent = `Reading ${label} layout…`;
+        candidates.push(await recognizeCandidate(worker, canvas, mode));
+      }
+    }
+    ocrProgress.textContent = 'Choosing the clearest Arabic text…';
+    ocrProgressBar.value = 88;
+    const result = candidates.reduce((best, candidate) =>
+      candidateScore(candidate) > candidateScore(best) ? candidate : best
+    );
     const text = result.data.text.trim();
     const confidence = Math.round(result.data.confidence || 0);
     lastOcrResult = {
