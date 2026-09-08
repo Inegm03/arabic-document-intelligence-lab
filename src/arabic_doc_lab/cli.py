@@ -8,6 +8,7 @@ from pathlib import Path
 from .engine import TesseractEngine
 from .experiment import SUPPORTED_CORRUPTIONS, run_experiment, write_report
 from .manifest import ManifestError, load_manifest
+from .report import write_html_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,6 +16,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("manifest", type=Path, help="version-one dataset manifest JSON")
     parser.add_argument("--dataset-root", type=Path, help="image root (default: manifest directory)")
     parser.add_argument("--output", type=Path, required=True, help="destination report JSON")
+    parser.add_argument(
+        "--html-output",
+        type=Path,
+        help="optional self-contained aggregate HTML report (contains no OCR text or images)",
+    )
     parser.add_argument(
         "--corruptions",
         nargs="+",
@@ -44,9 +50,13 @@ def main(argv: list[str] | None = None) -> int:
             include_predictions=args.include_predictions,
         )
         write_report(args.output, manifest, records)
+        if args.html_output:
+            write_html_report(args.html_output, manifest, records)
     except (ManifestError, RuntimeError) as exc:
         parser.error(str(exc))
     print(f"Wrote {len(records)} verified results to {args.output}")
+    if args.html_output:
+        print(f"Wrote privacy-safe HTML report to {args.html_output}")
     return 0
 
 

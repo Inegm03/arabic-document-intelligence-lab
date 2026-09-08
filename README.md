@@ -18,6 +18,7 @@ Arabic document AI is often evaluated with one aggregate score. That hides deplo
 - Validated, hash-pinned dataset manifests with license and source provenance
 - Deterministic CLI experiments across clean and corrupted samples
 - Privacy-safe JSON reports that omit recognized text by default
+- Self-contained HTML reports with severity curves and domain-level metric summaries
 - REST API with health and OCR endpoints
 - Automated tests and GitHub Actions CI
 
@@ -49,6 +50,7 @@ image with its SHA-256 digest. The example contains placeholders and is not a ru
 sha256sum datasets/my-dataset/images/page-001.png
 arabic-doc-lab datasets/my-dataset/manifest.json \
   --output results/tesseract.json \
+  --html-output results/tesseract.html \
   --max-severity 5
 ```
 
@@ -57,6 +59,10 @@ clean and once per selected corruption and severity. Reports contain dataset pro
 sample IDs, domains, engine names, CER/WER, and latency. OCR predictions are intentionally
 excluded because they may expose document contents; add `--include-predictions` only when the
 output can be stored and shared safely.
+
+The optional HTML report is a portable, dependency-free dashboard with CER/WER severity curves,
+domain and condition aggregates, and p50/p95 latency. It never embeds predictions, references,
+sample identifiers, or source images—even when JSON predictions were explicitly enabled.
 
 Use `--corruptions blur dark` to select conditions. `--dataset-root` overrides the default
 image root (the manifest directory). Reports are written atomically under the ignored
@@ -71,9 +77,10 @@ The repository intentionally excludes copyrighted or personally identifying docu
 ## Roadmap
 
 - [x] Dataset manifest and CLI experiment runner
+- [x] Privacy-safe HTML report with severity curves
 - Kraken and transformer-based OCR adapters
 - Layout-field F1 for receipts and forms
-- HTML report with failure galleries and severity curves
+- Opt-in, redacted failure galleries
 - ONNX export and CPU/edge latency comparison
 
 ## Responsible use
