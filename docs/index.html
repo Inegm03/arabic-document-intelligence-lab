@@ -46,7 +46,7 @@
               <textarea id="ocrText" class="ocr-output" lang="ar" dir="rtl" aria-label="Extracted Arabic text">حمّل مستنداً أو استخدم العينة لبدء التحليل.</textarea>
               <div class="ocr-confidence"><span id="ocrProgress">OCR ready</span><progress id="ocrProgressBar" max="100" value="0"></progress><b id="ocrConfidence">—</b></div>
               <div class="ocr-actions"><button id="runOcrButton" class="ghost-button" type="button" disabled>Extract Arabic text</button><button id="downloadTextButton" class="ghost-button" type="button" disabled>Download TXT</button><button id="downloadJsonButton" class="ghost-button" type="button" disabled>Download JSON</button></div>
-              <div class="notice">Arabic OCR runs locally in your browser. Review extracted text against the source page before using it.</div>
+              <div class="notice">Arabic OCR is processed securely with Google Cloud Vision. Review extracted text against the source page before using it.</div>
             </div>
             <div id="metadataTab" class="tab-content metadata"><p><span>Language</span><b>Arabic</b></p><p><span>Document type</span><b id="docType">Not analysed</b></p><p><span>Processing</span><b>Private, in browser</b></p><p><span>Export format</span><b>JSON · TXT · PDF</b></p></div>
           </div>
@@ -56,7 +56,7 @@
 
   </main>
   <footer class="shell"><div class="brand"><span class="brand-mark">ت</span><span>Turath AI</span></div></footer>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="config.js"></script>
   <script src="app.js" type="module"></script>
 </body>
 </html>

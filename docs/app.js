@@ -25,9 +25,9 @@ const els = {
 let pdfDocument = null;
 let currentPage = 1;
 let renderToken = 0;
-let ocrWorker = null;
 let currentFilename = 'arabic-document';
 let lastOcrResult = null;
+const visionApiUrl = (window.TURATH_VISION_API_URL || '').replace(/\/$/, '');
 
 function setOutput(text) { els.text.value = text; }
 
@@ -138,133 +138,41 @@ function loadFile(file) {
   img.src = URL.createObjectURL(file);
 }
 
-async function getOcrWorker() {
-  if (ocrWorker) return ocrWorker;
-  ocrWorker = await Tesseract.createWorker('ara', 1, {
-    logger(message) {
-      const progress = Math.round((message.progress || 0) * 100);
-      ocrProgress.textContent = message.status ? message.status.replace(/_/g, ' ') : 'Preparing OCR';
-      ocrProgressBar.value = progress;
-    }
-  });
-  return ocrWorker;
-}
-
-function makeOcrCanvas({ threshold = false } = {}) {
-  // OCR needs a clean, enlarged copy, while the preview retains its original
-  // colours.  Posters frequently mix dark blue and red Arabic text on a
-  // pale background: Tesseract's automatic binarisation is unreliable there.
-  const longestSide = Math.max(preview.width, preview.height);
-  const scale = Math.min(2, 2800 / longestSide);
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(preview.width * scale);
-  canvas.height = Math.round(preview.height * scale);
-  const ocrCtx = canvas.getContext('2d', { willReadFrequently: true });
-  ocrCtx.imageSmoothingEnabled = true;
-  ocrCtx.imageSmoothingQuality = 'high';
-  ocrCtx.filter = 'grayscale(1) contrast(1.65) brightness(1.08)';
-  ocrCtx.drawImage(preview, 0, 0, canvas.width, canvas.height);
-  ocrCtx.filter = 'none';
-  if (!threshold) return canvas;
-
-  // A mild adaptive threshold creates a second, high-contrast candidate. It
-  // deliberately uses a conservative cutoff so Arabic dots are not erased.
-  const pixels = ocrCtx.getImageData(0, 0, canvas.width, canvas.height);
-  const histogram = new Uint32Array(256);
-  for (let i = 0; i < pixels.data.length; i += 4) histogram[pixels.data[i]]++;
-  const total = canvas.width * canvas.height;
-  let weightedTotal = 0;
-  for (let value = 0; value < 256; value++) weightedTotal += value * histogram[value];
-  let backgroundWeight = 0, backgroundSum = 0, bestVariance = -1, cutoff = 165;
-  for (let value = 0; value < 256; value++) {
-    backgroundWeight += histogram[value];
-    if (!backgroundWeight) continue;
-    const foregroundWeight = total - backgroundWeight;
-    if (!foregroundWeight) break;
-    backgroundSum += value * histogram[value];
-    const difference = backgroundSum / backgroundWeight - (weightedTotal - backgroundSum) / foregroundWeight;
-    const variance = backgroundWeight * foregroundWeight * difference * difference;
-    if (variance > bestVariance) { bestVariance = variance; cutoff = value; }
-  }
-  // Bias a little towards preserving thin strokes and dots in phone images.
-  cutoff = Math.max(125, Math.min(210, cutoff + 12));
-  for (let i = 0; i < pixels.data.length; i += 4) {
-    const value = pixels.data[i] < cutoff ? 0 : 255;
-    pixels.data[i] = value; pixels.data[i + 1] = value; pixels.data[i + 2] = value;
-  }
-  ocrCtx.putImageData(pixels, 0, 0);
-  return canvas;
-}
-
-function candidateScore(result) {
-  const words = result.data.words || [];
-  const wordConfidence = words.length
-    ? words.reduce((total, word) => total + (word.confidence || 0), 0) / words.length
-    : result.data.confidence || 0;
-  const text = (result.data.text || '').trim();
-  const letters = text.match(/[\u0621-\u064A]/g) || [];
-  const nonSpace = text.match(/\S/g) || [];
-  const arabicShare = nonSpace.length ? letters.length / nonSpace.length : 0;
-  const lines = text.split(/\n+/).filter(Boolean);
-  const readableLines = lines.filter(line => (line.match(/[\u0621-\u064A]/g) || []).length >= 3).length;
-  // Engine confidence alone often chooses scattered logo fragments. Reward
-  // Arabic-heavy, line-like output, which is what a document extraction needs.
-  return wordConfidence + arabicShare * 24 + readableLines * 2 + Math.min(8, text.length / 70);
-}
-
-async function recognizeCandidate(worker, canvas, mode) {
-  await worker.setParameters({
-    tessedit_pageseg_mode: String(mode),
-    preserve_interword_spaces: '1',
-    user_defined_dpi: '300'
-  });
-  return worker.recognize(canvas);
+async function recognizeWithGoogleVision() {
+  if (!visionApiUrl) throw new Error('Google Cloud Vision has not been configured yet.');
+  const blob = await new Promise(resolve => preview.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Could not prepare the image for OCR.');
+  const form = new FormData();
+  form.append('file', blob, `${currentFilename}.png`);
+  const response = await fetch(`${visionApiUrl}/vision/ocr`, { method: 'POST', body: form });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.detail || 'Google Cloud Vision could not read this image.');
+  return result;
 }
 
 async function runOcr() {
   runOcrButton.disabled = true;
-  ocrProgress.textContent = 'Loading Arabic OCR…'; ocrProgressBar.value = 0; ocrConfidence.textContent = '—';
+  ocrProgress.textContent = 'Sending to Google Cloud Vision…'; ocrProgressBar.value = 18; ocrConfidence.textContent = '—';
   try {
-    const worker = await getOcrWorker();
-    const ocrCanvas = makeOcrCanvas();
-    const thresholdCanvas = makeOcrCanvas({ threshold: true });
-    ocrProgress.textContent = 'Enhancing image for Arabic text…';
-    ocrProgressBar.value = 18;
-
-    // Try the two layouts that matter here.  Mode 6 keeps lines in reading
-    // order for posters and notices; mode 11 rescues sparse cards.  We run
-    // both against a normal and an ink-on-paper candidate, then keep the most
-    // Arabic-like coherent result instead of blindly trusting confidence.
-    const candidates = [];
-    for (const [canvas, label] of [[ocrCanvas, 'document'], [thresholdCanvas, 'high contrast']]) {
-      for (const mode of [6, 11]) {
-        ocrProgress.textContent = `Reading ${label} layout…`;
-        candidates.push(await recognizeCandidate(worker, canvas, mode));
-      }
-    }
-    ocrProgress.textContent = 'Choosing the clearest Arabic text…';
-    ocrProgressBar.value = 88;
-    const result = candidates.reduce((best, candidate) =>
-      candidateScore(candidate) > candidateScore(best) ? candidate : best
-    );
-    const text = result.data.text.trim();
-    const confidence = Math.round(result.data.confidence || 0);
+    ocrProgress.textContent = 'Reading Arabic text…'; ocrProgressBar.value = 58;
+    const result = await recognizeWithGoogleVision();
+    const text = (result.text || '').trim();
     lastOcrResult = {
       filename: currentFilename,
       page: pdfDocument ? currentPage : 1,
       pageCount: pdfDocument ? pdfDocument.numPages : 1,
-      language: 'ara', confidence, text,
+      language: 'ara', engine: result.engine, text,
       qualityScore: Number(els.score.textContent) || null,
       createdAt: new Date().toISOString()
     };
     setOutput(text || 'لم يتم العثور على نص عربي واضح في هذه الصفحة.');
     ocrProgress.textContent = text ? 'Extraction complete' : 'No clear text found';
-    ocrProgressBar.value = 100; ocrConfidence.textContent = `${confidence}%`;
+    ocrProgressBar.value = 100; ocrConfidence.textContent = result.engine || 'Google Vision';
     downloadTextButton.disabled = !text; downloadJsonButton.disabled = !text;
   } catch (error) {
     console.error(error);
     ocrProgress.textContent = 'OCR failed'; ocrProgressBar.value = 0;
-    setOutput('تعذّر استخراج النص. تحقق من الاتصال وحاول مرة أخرى بصورة أوضح.');
+    setOutput(error.message || 'تعذّر استخراج النص. تحقق من الاتصال وحاول مرة أخرى بصورة أوضح.');
   } finally {
     runOcrButton.disabled = false;
   }

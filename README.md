@@ -22,12 +22,40 @@ Arabic document AI is often evaluated with one aggregate score. That hides deplo
 - REST API with health and OCR endpoints
 - Automated tests and GitHub Actions CI
 
-## Quick start
+## Google Cloud Vision production OCR
+
+The GitHub Pages UI uses a separate Cloud Run service for production OCR. This
+keeps Google credentials out of the browser and makes `document_text_detection`
+available for Arabic notices, posters, and scans.
+
+1. In a Google Cloud project, enable the **Cloud Vision API**, **Cloud Run API**,
+   and **Cloud Build API**.
+2. Create a user-managed service account, grant it **Cloud Vision AI User**, and
+   deploy the backend with that service account attached:
+
+```bash
+gcloud run deploy turath-vision-ocr \
+  --source . \
+  --region europe-west1 \
+  --allow-unauthenticated \
+  --service-account turath-vision@PROJECT_ID.iam.gserviceaccount.com
+```
+
+3. Put the resulting Cloud Run HTTPS URL (without a trailing slash) in
+   `docs/config.js` as `window.TURATH_VISION_API_URL`, then publish the Pages
+   update.
+
+The Cloud Run service authenticates to Vision with its service identity—do not
+put a Google API key or a service-account JSON file in `docs/`, GitHub, or the
+browser. Google documents Cloud Run service identity and Vision application
+default credentials in its [Vision authentication guide](https://cloud.google.com/vision/docs/authentication).
+
+## Local development
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev,ocr]'
+pip install -e '.[dev,ocr,vision]'
 pytest -q
 uvicorn arabic_doc_lab.api:app --reload
 ```
