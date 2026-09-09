@@ -13,7 +13,7 @@ Arabic document AI is often evaluated with one aggregate score. That hides deplo
 - Arabic normalization including diacritics, tatweel, and Alef variants
 - Character error rate (CER) and word error rate (WER)
 - Five severity levels for blur, darkness, low contrast, and JPEG compression
-- Replaceable OCR engine interface with a Tesseract Arabic baseline
+- Replaceable OCR engine interface with Tesseract, Kraken, and Transformers adapters
 - Per-sample latency measurement
 - Validated, hash-pinned dataset manifests with license and source provenance
 - Deterministic CLI experiments across clean and corrupted samples
@@ -82,6 +82,29 @@ arabic-doc-lab datasets/my-dataset/manifest.json \
   --max-severity 5
 ```
 
+Choose a backend explicitly when comparing OCR systems. Kraken uses a local model file and an
+isolated temporary directory; its model SHA-256 prefix is recorded in every result. The
+Transformers adapter requires an immutable Hugging Face model commit so a moving `main` branch
+cannot silently change an experiment:
+
+```bash
+pip install -e '.[kraken]'
+arabic-doc-lab datasets/my-dataset/manifest.json --output results/kraken.json \
+  --engine kraken --model models/arabic.mlmodel
+
+pip install -e '.[transformers]'
+arabic-doc-lab datasets/my-dataset/manifest.json --output results/transformer.json \
+  --engine transformers --model organization/arabic-ocr \
+  --model-revision FULL_HUGGING_FACE_COMMIT_SHA
+```
+
+Model weights are deliberately excluded from the repository. Before using a model, review its
+model card, license, training-data provenance, Arabic coverage, and intended document domain.
+Do not benchmark private documents or redistribute weights without permission. Transformer
+models are loaded with remote code disabled; Kraken subprocesses have a configurable per-page
+timeout (`--ocr-timeout`, 120 seconds by default), and temporary input/output files are deleted
+after each prediction.
+
 The runner verifies **all** paths and hashes before OCR starts, then evaluates each page once
 clean and once per selected corruption and severity. Reports contain dataset provenance,
 sample IDs, domains, engine names, CER/WER, and latency. OCR predictions are intentionally
@@ -106,7 +129,7 @@ The repository intentionally excludes copyrighted or personally identifying docu
 
 - [x] Dataset manifest and CLI experiment runner
 - [x] Privacy-safe HTML report with severity curves
-- Kraken and transformer-based OCR adapters
+- [x] Kraken and transformer-based OCR adapters with reproducible model identification
 - Layout-field F1 for receipts and forms
 - Opt-in, redacted failure galleries
 - ONNX export and CPU/edge latency comparison
