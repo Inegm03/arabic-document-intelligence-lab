@@ -13,6 +13,7 @@ dependencies = ["fastapi>=0.115", "pillow>=10", "python-multipart>=0.0.9", "uvic
 
 [project.scripts]
 arabic-doc-lab = "arabic_doc_lab.cli:main"
+arabic-doc-fields = "arabic_doc_lab.fields:main"
 
 [project.optional-dependencies]
 ocr = ["pytesseract>=0.3.13"]

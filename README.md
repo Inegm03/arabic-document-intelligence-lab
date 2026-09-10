@@ -19,6 +19,7 @@ Arabic document AI is often evaluated with one aggregate score. That hides deplo
 - Deterministic CLI experiments across clean and corrupted samples
 - Privacy-safe JSON reports that omit recognized text by default
 - Self-contained HTML reports with severity curves and domain-level metric summaries
+- Privacy-safe normalized exact-match field F1 for forms and receipts
 - REST API with health and OCR endpoints
 - Automated tests and GitHub Actions CI
 
@@ -119,6 +120,39 @@ Use `--corruptions blur dark` to select conditions. `--dataset-root` overrides t
 image root (the manifest directory). Reports are written atomically under the ignored
 `results/` directory.
 
+## Form and receipt field evaluation
+
+Evaluate a layout-aware model's structured output separately from transcription OCR. Both the
+ground-truth and prediction files use a small, model-agnostic interchange format:
+
+```json
+{
+  "schema_version": 1,
+  "samples": [
+    {
+      "sample_id": "receipt-001",
+      "fields": {"merchant": "قيمة تجريبية", "total": "12.50"}
+    }
+  ]
+}
+```
+
+Sample IDs must exist in the dataset manifest, and predictions cannot introduce unannotated
+samples. Run the evaluator with local annotation and prediction files:
+
+```bash
+arabic-doc-fields datasets/my-dataset/manifest.json \
+  private/field-annotations.json results/model-fields.json \
+  --output results/model-field-metrics.json
+```
+
+Values are compared by normalized exact match after Unicode compatibility normalization,
+Arabic diacritic/tatweel and Alef normalization, whitespace folding, and case folding. A wrong
+value counts as both a false positive and a false negative. The report contains micro precision,
+recall, and F1, macro F1, and per-field aggregates. It intentionally excludes every field value
+and sample identifier. Keep annotations and raw predictions outside version control because they
+may contain personal or commercially sensitive document data.
+
 ## Evaluation design
 
 Run each source page at severity 0–5 for every corruption. Report mean CER, WER, and p50/p95 latency by document domain and condition. Keep clean and corrupted variants linked by sample ID so robustness degradation can be distinguished from baseline OCR failure.
@@ -130,7 +164,7 @@ The repository intentionally excludes copyrighted or personally identifying docu
 - [x] Dataset manifest and CLI experiment runner
 - [x] Privacy-safe HTML report with severity curves
 - [x] Kraken and transformer-based OCR adapters with reproducible model identification
-- Layout-field F1 for receipts and forms
+- [x] Privacy-safe layout-field F1 for receipts and forms
 - Opt-in, redacted failure galleries
 - ONNX export and CPU/edge latency comparison
 
