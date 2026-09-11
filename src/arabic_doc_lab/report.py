@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import html
+import io
 import os
 import statistics
 import tempfile
@@ -11,8 +13,12 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image, UnidentifiedImageError
+
 from .experiment import ExperimentRecord
-from .manifest import DatasetManifest
+from .manifest import DatasetManifest, ManifestError
+
+_MAX_PREVIEW_PIXELS = 25_000_000
 
 
 @dataclass(frozen=True)
@@ -27,6 +33,18 @@ class Aggregate:
     mean_wer: float
     p50_latency_ms: float
     p95_latency_ms: float
+
+
+@dataclass(frozen=True)
+class FailureExample:
+    """A metric-only failure summary paired with a sanitized redacted preview."""
+
+    domain: str
+    condition: str
+    severity: int
+    cer: float
+    wer: float
+    preview_data_url: str
 
 
 def _percentile(values: Sequence[float], percentile: float) -> float:
@@ -61,6 +79,80 @@ def aggregate_records(records: Iterable[ExperimentRecord]) -> list[Aggregate]:
             )
         )
     return summaries
+
+
+def build_failure_gallery(
+    manifest: DatasetManifest,
+    records: Iterable[ExperimentRecord],
+    dataset_root: str | Path,
+    *,
+    limit: int = 6,
+) -> list[FailureExample]:
+    """Select worst failures with explicitly supplied, hash-pinned redacted previews.
+
+    Source images and OCR text are never read. Preview files are decoded and re-encoded to
+    remove metadata, then embedded in the report so no local paths or sample IDs are exposed.
+    """
+    if limit not in range(1, 21):
+        raise ValueError("gallery limit must be between 1 and 20")
+    preview_by_id = {
+        sample.id: sample.redacted_preview
+        for sample in manifest.samples
+        if sample.redacted_preview is not None
+    }
+    if not preview_by_id:
+        raise ValueError("manifest has no redacted_preview assets")
+
+    worst_by_sample: dict[str, ExperimentRecord] = {}
+    for record in records:
+        if record.sample_id not in preview_by_id:
+            continue
+        current = worst_by_sample.get(record.sample_id)
+        score = (record.cer + record.wer, record.cer, record.wer, record.severity)
+        if current is None or score > (
+            current.cer + current.wer,
+            current.cer,
+            current.wer,
+            current.severity,
+        ):
+            worst_by_sample[record.sample_id] = record
+
+    selected = sorted(
+        worst_by_sample.values(),
+        key=lambda item: (-(item.cer + item.wer), -item.cer, -item.wer, item.sample_id),
+    )[:limit]
+    examples = []
+    for record in selected:
+        preview = preview_by_id[record.sample_id]
+        assert preview is not None
+        path = preview.verify_image(Path(dataset_root), record.sample_id)
+        try:
+            with Image.open(path) as source:
+                if source.width * source.height > _MAX_PREVIEW_PIXELS:
+                    raise ManifestError(
+                        f"sample {record.sample_id!r} redacted preview exceeds "
+                        f"{_MAX_PREVIEW_PIXELS:,} pixels"
+                    )
+                image = source.convert("RGB")
+                image.thumbnail((640, 480))
+                encoded = io.BytesIO()
+                image.save(encoded, format="PNG", optimize=True)
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+            raise ManifestError(
+                f"sample {record.sample_id!r} redacted preview is not a readable image"
+            ) from exc
+        data_url = "data:image/png;base64," + base64.b64encode(encoded.getvalue()).decode("ascii")
+        examples.append(
+            FailureExample(
+                domain=record.domain,
+                condition=record.condition,
+                severity=record.severity,
+                cer=record.cer,
+                wer=record.wer,
+                preview_data_url=data_url,
+            )
+        )
+    return examples
 
 
 def _curve_svg(records: Sequence[ExperimentRecord], metric: str, label: str) -> str:
@@ -146,7 +238,9 @@ def _curve_svg(records: Sequence[ExperimentRecord], metric: str, label: str) -> 
 
 
 def render_html_report(
-    manifest: DatasetManifest, records: Iterable[ExperimentRecord]
+    manifest: DatasetManifest,
+    records: Iterable[ExperimentRecord],
+    failure_examples: Sequence[FailureExample] = (),
 ) -> str:
     """Render a self-contained aggregate report with no OCR text or source images."""
     record_list = list(records)
@@ -168,6 +262,22 @@ def render_html_report(
     title = html.escape(manifest.name)
     source_url = html.escape(manifest.source_url, quote=True)
     license_url = html.escape(manifest.license_url, quote=True)
+    gallery = ""
+    if failure_examples:
+        cards = "".join(
+            '<article class="failure-card">'
+            f'<img src="{html.escape(item.preview_data_url, quote=True)}" '
+            'alt="User-supplied redacted document preview">'
+            f"<h3>{html.escape(item.domain)}</h3>"
+            f"<p>{html.escape(item.condition.replace('_', ' '))}, severity {item.severity}</p>"
+            f"<p>CER {item.cer:.2%} · WER {item.wer:.2%}</p>"
+            "</article>"
+            for item in failure_examples
+        )
+        gallery = f"""
+<h2>Redacted failure gallery</h2>
+<p class="note">Worst result per opted-in sample. Previews were separately prepared, hash-verified, stripped of metadata, and re-encoded; OCR and reference text remain excluded.</p>
+<div class="failure-grid">{cards}</div>"""
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -191,6 +301,10 @@ svg {{ width:100%; height:auto; overflow:visible; }}
 .table-wrap {{ overflow-x:auto; }} table {{ border-collapse:collapse; width:100%; }}
 th,td {{ padding:10px 12px; text-align:left; border-bottom:1px solid #25334a; white-space:nowrap; }}
 th {{ color:#9fb0c5; font-size:.8rem; text-transform:uppercase; }}
+.failure-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }}
+.failure-card {{ background:#101c2d; border:1px solid #25334a; border-radius:14px; overflow:hidden; }}
+.failure-card img {{ display:block; width:100%; aspect-ratio:4/3; object-fit:contain; background:#050a12; }}
+.failure-card h3, .failure-card p {{ margin:12px 16px; }}
 </style>
 </head>
 <body><main>
@@ -213,19 +327,23 @@ th {{ color:#9fb0c5; font-size:.8rem; text-transform:uppercase; }}
 <div class="panel table-wrap"><table>
 <thead><tr><th>Domain</th><th>Condition</th><th>Severity</th><th>N</th><th>Mean CER</th><th>Mean WER</th><th>p50 ms</th><th>p95 ms</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
+{gallery}
 <h2>Provenance and privacy</h2>
-<p class="note">Dataset: <a href="{source_url}">{title}</a>. License: <a href="{license_url}">{html.escape(manifest.license_name)}</a>. This report contains aggregate metrics only—no OCR predictions, reference text, sample identifiers, or source images.</p>
+<p class="note">Dataset: <a href="{source_url}">{title}</a>. License: <a href="{license_url}">{html.escape(manifest.license_name)}</a>. This report contains no OCR predictions, reference text, sample identifiers, or source images. Any displayed gallery assets are separate redacted previews explicitly supplied for publication.</p>
 </main></body></html>
 """
 
 
 def write_html_report(
-    output: str | Path, manifest: DatasetManifest, records: Iterable[ExperimentRecord]
+    output: str | Path,
+    manifest: DatasetManifest,
+    records: Iterable[ExperimentRecord],
+    failure_examples: Sequence[FailureExample] = (),
 ) -> None:
     """Atomically write a self-contained HTML report."""
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
-    rendered = render_html_report(manifest, records)
+    rendered = render_html_report(manifest, records, failure_examples)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:

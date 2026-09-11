@@ -8,7 +8,7 @@ from pathlib import Path
 from .engine import KrakenEngine, OCREngine, TesseractEngine, TransformersEngine
 from .experiment import SUPPORTED_CORRUPTIONS, run_experiment, write_report
 from .manifest import ManifestError, load_manifest
-from .report import write_html_report
+from .report import build_failure_gallery, write_html_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,6 +47,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional self-contained aggregate HTML report (contains no OCR text or images)",
     )
     parser.add_argument(
+        "--include-redacted-gallery",
+        action="store_true",
+        help="embed explicitly supplied, hash-pinned redacted previews in the HTML report",
+    )
+    parser.add_argument(
+        "--gallery-max-items",
+        type=int,
+        default=6,
+        help="maximum redacted failure previews to embed (1-20; default: 6)",
+    )
+    parser.add_argument(
         "--corruptions",
         nargs="+",
         choices=SUPPORTED_CORRUPTIONS,
@@ -83,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.include_redacted_gallery and not args.html_output:
+            raise ValueError("--include-redacted-gallery requires --html-output")
         manifest = load_manifest(args.manifest)
         engine = build_engine(args)
         records = run_experiment(
@@ -93,9 +106,17 @@ def main(argv: list[str] | None = None) -> int:
             max_severity=args.max_severity,
             include_predictions=args.include_predictions,
         )
+        examples = ()
+        if args.include_redacted_gallery:
+            examples = build_failure_gallery(
+                manifest,
+                records,
+                args.dataset_root or args.manifest.parent,
+                limit=args.gallery_max_items,
+            )
         write_report(args.output, manifest, records)
         if args.html_output:
-            write_html_report(args.html_output, manifest, records)
+            write_html_report(args.html_output, manifest, records, examples)
     except (ManifestError, RuntimeError, ValueError) as exc:
         parser.error(str(exc))
     print(f"Wrote {len(records)} verified results to {args.output}")

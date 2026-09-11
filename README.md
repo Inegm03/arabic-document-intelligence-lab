@@ -20,6 +20,7 @@ Arabic document AI is often evaluated with one aggregate score. That hides deplo
 - Privacy-safe JSON reports that omit recognized text by default
 - Self-contained HTML reports with severity curves and domain-level metric summaries
 - Privacy-safe normalized exact-match field F1 for forms and receipts
+- Opt-in failure galleries using separate, hash-pinned redacted previews
 - REST API with health and OCR endpoints
 - Automated tests and GitHub Actions CI
 
@@ -116,6 +117,33 @@ The optional HTML report is a portable, dependency-free dashboard with CER/WER s
 domain and condition aggregates, and p50/p95 latency. It never embeds predictions, references,
 sample identifiers, or source images—even when JSON predictions were explicitly enabled.
 
+### Opt-in redacted failure galleries
+
+To inspect representative failures without publishing the benchmark inputs, prepare a separate
+redacted preview for each sample you want to show and add it to the manifest:
+
+```json
+"redacted_preview": {
+  "image": "redacted-previews/public-page-001.png",
+  "sha256": "SHA256_OF_THE_REDACTED_PREVIEW"
+}
+```
+
+Then pass `--include-redacted-gallery` with `--html-output`. The report selects the worst result
+per opted-in sample (up to `--gallery-max-items`, default 6), verifies the preview hash, removes
+image metadata by decoding and re-encoding it, and embeds the sanitized PNG. It never reads the
+source image while building the gallery and never includes OCR text, references, sample IDs, or
+local paths.
+
+```bash
+arabic-doc-lab datasets/my-dataset/manifest.json --output results/run.json \
+  --html-output results/run.html --include-redacted-gallery --gallery-max-items 6
+```
+
+Redaction is a data-owner responsibility: use a separately reviewed derivative, cover all
+identifiers and sensitive content, and do not assume that cropping, EXIF removal, or filename
+changes anonymize a document. Omit `redacted_preview` for any sample that is not safe to publish.
+
 Use `--corruptions blur dark` to select conditions. `--dataset-root` overrides the default
 image root (the manifest directory). Reports are written atomically under the ignored
 `results/` directory.
@@ -165,7 +193,7 @@ The repository intentionally excludes copyrighted or personally identifying docu
 - [x] Privacy-safe HTML report with severity curves
 - [x] Kraken and transformer-based OCR adapters with reproducible model identification
 - [x] Privacy-safe layout-field F1 for receipts and forms
-- Opt-in, redacted failure galleries
+- [x] Opt-in, redacted failure galleries
 - ONNX export and CPU/edge latency comparison
 
 ## Responsible use

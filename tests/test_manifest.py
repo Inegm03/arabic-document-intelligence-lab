@@ -68,3 +68,43 @@ def test_hash_mismatch_is_rejected(tmp_path):
 
     with pytest.raises(ManifestError, match="SHA-256"):
         manifest.samples[0].verify_image(tmp_path)
+
+
+def test_manifest_loads_and_verifies_redacted_preview(tmp_path):
+    preview = tmp_path / "preview.png"
+    preview.write_bytes(b"separately redacted fixture")
+    data = manifest_data()
+    data["samples"][0]["redacted_preview"] = {
+        "image": preview.name,
+        "sha256": hashlib.sha256(preview.read_bytes()).hexdigest(),
+    }
+
+    manifest = load_manifest(write_manifest(tmp_path, data))
+
+    assert manifest.samples[0].redacted_preview is not None
+    assert manifest.samples[0].redacted_preview.verify_image(tmp_path, "page-1") == preview
+
+
+@pytest.mark.parametrize("image_name", ["/tmp/preview.png", "../preview.png"])
+def test_redacted_preview_rejects_unsafe_paths(tmp_path, image_name):
+    data = manifest_data()
+    data["samples"][0]["redacted_preview"] = {"image": image_name, "sha256": "0" * 64}
+
+    if image_name.startswith("/"):
+        with pytest.raises(ManifestError, match="relative path"):
+            load_manifest(write_manifest(tmp_path, data))
+    else:
+        manifest = load_manifest(write_manifest(tmp_path, data))
+        with pytest.raises(ManifestError, match="escapes the dataset root"):
+            manifest.samples[0].redacted_preview.verify_image(tmp_path, "page-1")
+
+
+def test_redacted_preview_must_be_separate_from_source(tmp_path):
+    data = manifest_data()
+    data["samples"][0]["redacted_preview"] = {
+        "image": data["samples"][0]["image"],
+        "sha256": data["samples"][0]["sha256"],
+    }
+
+    with pytest.raises(ManifestError, match="separate from the source"):
+        load_manifest(write_manifest(tmp_path, data))

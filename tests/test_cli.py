@@ -12,6 +12,19 @@ def test_cli_defaults_to_tesseract():
     assert isinstance(build_engine(parse()), TesseractEngine)
 
 
+def test_cli_accepts_opt_in_redacted_gallery_options():
+    args = parse(
+        "--html-output",
+        "report.html",
+        "--include-redacted-gallery",
+        "--gallery-max-items",
+        "4",
+    )
+
+    assert args.include_redacted_gallery is True
+    assert args.gallery_max_items == 4
+
+
 def test_cli_builds_pinned_transformers_engine():
     revision = "abcdef1234567890abcdef1234567890abcdef12"
     engine = build_engine(

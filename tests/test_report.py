@@ -1,10 +1,18 @@
+import base64
 import hashlib
+import io
 
 import pytest
+from PIL import Image
 
 from arabic_doc_lab.experiment import ExperimentRecord
-from arabic_doc_lab.manifest import DatasetManifest, DatasetSample
-from arabic_doc_lab.report import aggregate_records, render_html_report, write_html_report
+from arabic_doc_lab.manifest import DatasetManifest, DatasetSample, RedactedPreview
+from arabic_doc_lab.report import (
+    aggregate_records,
+    build_failure_gallery,
+    render_html_report,
+    write_html_report,
+)
 
 
 def manifest_fixture():
@@ -87,3 +95,91 @@ def test_html_report_writer_creates_parent_directory(tmp_path):
     write_html_report(output, manifest_fixture(), [record(0, 0, 4)])
 
     assert output.read_text(encoding="utf-8").startswith("<!doctype html>")
+
+
+def test_failure_gallery_uses_only_redacted_preview_and_strips_metadata(tmp_path):
+    source = tmp_path / "source-private.png"
+    source.write_bytes(b"PRIVATE SOURCE BYTES")
+    preview = tmp_path / "reviewed-preview.jpg"
+    image = Image.new("RGB", (20, 10), "red")
+    exif = Image.Exif()
+    exif[0x010E] = "PRIVATE EXIF VALUE"
+    image.save(preview, exif=exif)
+    manifest = manifest_fixture()
+    sample = manifest.samples[0]
+    opted_in = DatasetSample(
+        id=sample.id,
+        image=source.name,
+        reference=sample.reference,
+        domain=sample.domain,
+        sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        redacted_preview=RedactedPreview(
+            image=preview.name,
+            sha256=hashlib.sha256(preview.read_bytes()).hexdigest(),
+        ),
+    )
+    manifest = DatasetManifest(
+        name=manifest.name,
+        license_name=manifest.license_name,
+        license_url=manifest.license_url,
+        source_url=manifest.source_url,
+        samples=(opted_in,),
+    )
+
+    examples = build_failure_gallery(
+        manifest,
+        [record(0.7, 0.8, 4, severity=3, condition="jpeg", prediction="secret")],
+        tmp_path,
+    )
+    report = render_html_report(manifest, [record(0.7, 0.8, 4)], examples)
+
+    assert len(examples) == 1
+    assert examples[0].condition == "jpeg"
+    assert "Redacted failure gallery" in report
+    assert "private-sample-id" not in report
+    assert "secret" not in report
+    payload = examples[0].preview_data_url.partition(",")[2]
+    sanitized = base64.b64decode(payload)
+    assert b"PRIVATE EXIF VALUE" not in sanitized
+    assert b"PRIVATE SOURCE BYTES" not in sanitized
+    with Image.open(io.BytesIO(sanitized)) as embedded:
+        assert embedded.format == "PNG"
+
+
+def test_failure_gallery_selects_worst_result_per_opted_in_sample(tmp_path):
+    preview = tmp_path / "preview.png"
+    Image.new("RGB", (8, 8), "white").save(preview)
+    manifest = manifest_fixture()
+    sample = manifest.samples[0]
+    manifest = DatasetManifest(
+        name=manifest.name,
+        license_name=manifest.license_name,
+        license_url=manifest.license_url,
+        source_url=manifest.source_url,
+        samples=(
+            DatasetSample(
+                id=sample.id,
+                image=sample.image,
+                reference=sample.reference,
+                domain=sample.domain,
+                sha256=sample.sha256,
+                redacted_preview=RedactedPreview(
+                    image=preview.name,
+                    sha256=hashlib.sha256(preview.read_bytes()).hexdigest(),
+                ),
+            ),
+        ),
+    )
+
+    examples = build_failure_gallery(
+        manifest,
+        [record(0.1, 0.2, 1), record(0.8, 0.9, 2, severity=4, condition="blur")],
+        tmp_path,
+    )
+
+    assert [(item.condition, item.severity) for item in examples] == [("blur", 4)]
+
+
+def test_failure_gallery_requires_explicit_preview_opt_in(tmp_path):
+    with pytest.raises(ValueError, match="no redacted_preview"):
+        build_failure_gallery(manifest_fixture(), [record(1, 1, 1)], tmp_path)
